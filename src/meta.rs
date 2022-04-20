@@ -93,7 +93,11 @@ where
     }
 }
 
-struct Fat(usize);
+struct Fat(*const ());
+
+// These impls are both required by the use of Fat inside a Resource with the parallel feature
+unsafe impl Send for Fat {}
+unsafe impl Sync for Fat {}
 
 impl Fat {
     pub unsafe fn from_ptr<T: ?Sized>(t: &T) -> Self {
@@ -101,21 +105,21 @@ impl Fat {
 
         assert_unsized::<T>();
 
-        let fat_ptr = &t as *const &T as *const usize;
+        let fat_ptr = &t as *const &T as *const *const ();
         // Memory layout:
         // [object pointer, vtable pointer]
         //  ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
         //  8 bytes       | 8 bytes
         // (on 32-bit both have 4 bytes)
-        let vtable = read::<usize>(fat_ptr.offset(1));
+        let vtable = read::<*const ()>(fat_ptr.offset(1));
 
         Fat(vtable)
     }
 
     pub unsafe fn create_ptr<T: ?Sized>(&self, ptr: *const ()) -> *const T {
-        let fat_ptr: (*const (), usize) = (ptr, self.0);
+        let fat_ptr: (*const (), *const()) = (ptr, self.0);
 
-        *(&fat_ptr as *const (*const (), usize) as *const *const T)
+        *(&fat_ptr as *const (*const (), *const()) as *const *const T)
     }
 }
 
